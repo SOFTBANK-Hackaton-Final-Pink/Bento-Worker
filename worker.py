@@ -77,7 +77,7 @@ class ResourceMonitor(threading.Thread):
         self.stop_event.set()
 
 # ==============================================================================
-# 💾 [함수] DB 로직 (여기가 수정되었습니다!)
+# 💾 [함수] DB 로직
 # ==============================================================================
 def get_db_connection():
     return pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, db=DB_NAME, charset='utf8mb4')
@@ -103,27 +103,25 @@ def save_result_to_db(execution_id_str, logs, result_val, error_msg, duration_ms
             r_id_bin = uuid.uuid4().bytes
             e_id_bin = uuid.UUID(execution_id_str).bytes
             
-            # 🚨 [수정 1] JSON 변환 제거 및 순수 출력값 추출
-            # 로그가 있으면 로그를, 없으면 결과값을, 둘 다 없으면 빈 문자열 저장
-            clean_output = logs if logs else str(result_val) if result_val is not None else ""
-
-            # 🚨 [수정 2] error_message 컬럼 활용
-            # 에러가 있으면 DB의 error_message 컬럼에 저장
-            final_error_msg = error_msg if error_msg else None
+            final_output = {
+                "logs": logs,
+                "result": result_val,
+                "error": error_msg
+            }
+            output_json = json.dumps(final_output, ensure_ascii=False)
 
             sql_insert = """
                 INSERT INTO execution_results 
-                (result_id, execution_id, output, error_message, cpu_usage, memory_usage_mb, duration_ms, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                (result_id, execution_id, output, cpu_usage, memory_usage_mb, duration_ms, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
             """
             cursor.execute(sql_insert, (
-                r_id_bin, e_id_bin, 
-                clean_output,       # 순수 텍스트 결과 (output 컬럼)
-                final_error_msg,    # 에러 메시지 (error_message 컬럼)
-                cpu_usage, memory_mb, duration_ms
+                r_id_bin, e_id_bin, output_json, cpu_usage, memory_mb, duration_ms
             ))
 
+            # 🚨 [핵심 수정] DB ENUM 타입에 맞춰 단어 변경 (FAILURE / SUCCESS)
             status = "FAILURE" if error_msg else "SUCCESS"
+            
             sql_update = "UPDATE executions SET status = %s, updated_at = NOW() WHERE execution_id = %s"
             cursor.execute(sql_update, (status, e_id_bin))
             
@@ -142,6 +140,7 @@ def save_result_to_db(execution_id_str, logs, result_val, error_msg, duration_ms
 def get_container(runtime):
     with pool_lock:
         if runtime not in WARM_CACHE:
+             # 혹시 모를 예외 처리 (DB에 이상한 런타임 값 있을 경우)
              raise Exception(f"Unsupported runtime key: {runtime}")
 
         if WARM_CACHE[runtime]:
@@ -202,6 +201,7 @@ def process_job(sqs, msg):
         code = func_details['code']
         raw_runtime = func_details['runtime'].lower()
 
+        # 🚨 [수정] DB의 'python:3.9' 등을 'python'으로 매핑
         if 'python' in raw_runtime:
             runtime = 'python'
         elif 'node' in raw_runtime:
