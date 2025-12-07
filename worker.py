@@ -4,195 +4,294 @@ import time
 import json
 import requests
 import sys
-import traceback
+import pymysql
+import uuid
+import threading
+import signal
+from datetime import datetime
 
 # ==============================================================================
-# [설정] AWS SQS URL (사용자분 계정 ID 확인 완료)
+# ⚙️ [설정]
 # ==============================================================================
+
 SQS_QUEUE_URL = 'https://sqs.ap-northeast-2.amazonaws.com/445567111280/MyLambda-Worker-Queue'
 REGION = 'ap-northeast-2'
+
+DB_HOST = "rds-lambda.clwq2emuq7jw.ap-northeast-2.rds.amazonaws.com"
+DB_USER = "admin"
+DB_PASS = "StrongPass123!"
+DB_NAME = "pink"
+
+NUM_WORKERS = 10 
 
 RUNTIME_IMAGES = {
     "python": "my-lambda-python:latest",
     "node": "my-lambda-node:latest"
 }
 
-# ⭐ Warm Pool (캐시) - 실행된 컨테이너를 담아두는 곳
-WARM_CACHE = {}
+pool_lock = threading.Lock()
+WARM_CACHE = {
+    "python": [],
+    "node": []
+}
 
-try:
-    docker_client = docker.from_env()
-    sqs = boto3.client('sqs', region_name=REGION)
-except Exception as e:
-    print(f"🔥 초기화 실패: {e}")
-    sys.exit(1)
+docker_client = docker.from_env()
+running = True
 
 # ==============================================================================
-# ⚙️ [1단계] Pre-warming (미리 켜두기) 함수
+# 🕵️‍♂️ [클래스] 리소스 모니터링
 # ==============================================================================
-def initialize_warm_pool():
-    print(f"\n🔥 [Pre-warming] Initializing Containers...")
-    
-    # 지원하는 모든 언어(Python, Node)를 하나씩 미리 띄움
-    runtimes_to_init = ['python', 'node']
-    
-    for rt in runtimes_to_init:
-        image = RUNTIME_IMAGES[rt]
-        # 이미 켜져있는지 확인 (중복 실행 방지)
-        if rt in WARM_CACHE:
-            continue
+class ResourceMonitor(threading.Thread):
+    def __init__(self, container):
+        super().__init__()
+        self.container = container
+        self.stop_event = threading.Event()
+        self.max_cpu = 0.0
+        self.max_memory_mb = 0.0
 
-        print(f"   creating {rt} container ({image})...")
+    def run(self):
         try:
-            container = docker_client.containers.run(
-                image,
-                detach=True,
-                ports={'8080/tcp': None} # 랜덤 포트
-            )
-            time.sleep(1) # 부팅 대기
-            container.reload() # 상태 갱신
-            
-            # 캐시에 저장 (이제 얘는 Always On 상태가 됨)
-            WARM_CACHE[rt] = container
-            print(f"   ✅ {rt} is Ready & Warm!")
-            
-        except Exception as e:
-            print(f"   ⚠️ Pre-warming failed for {rt}: {e}")
-
-# ==============================================================================
-# 🚀 메인 로직 시작
-# ==============================================================================
-
-print(f"\n🚀 [Worker Started]")
-print(f"📡 Target Queue: {SQS_QUEUE_URL}")
-
-# ⭐ 서버 시작하자마자 미리 만들어두기 호출!
-initialize_warm_pool()
-
-print("Waiting for jobs... (Press Ctrl+C to stop)\n")
-
-while True:
-    try:
-        # 1. SQS 메시지 수신 (Long Polling)
-        response = sqs.receive_message(
-            QueueUrl=SQS_QUEUE_URL,
-            MaxNumberOfMessages=1,
-            WaitTimeSeconds=20,
-            AttributeNames=['ApproximateReceiveCount']
-        )
-
-        if 'Messages' not in response:
-            continue
-
-        message = response['Messages'][0]
-        receipt_handle = message['ReceiptHandle']
-
-        try:
-            body = json.loads(message['Body'])
-        except:
-            # JSON 파싱 실패시 텍스트 그대로 처리 (테스트용)
-            body = {"runtime": "python", "code": message['Body']}
-
-        # ✅ [수정된 부분] ID 추출 로직 강화 (Scenario A 대응)
-        # 1순위: executionId, 2순위: uuid, 없으면 Unknown
-        exec_id = body.get('executionId') or body.get('uuid') or 'Unknown-ID'
-        
-        # 런타임 정리 (대소문자 무시)
-        raw_runtime = body.get('runtime', 'python').lower()
-        
-        if 'node' in raw_runtime or 'js' in raw_runtime:
-            req_runtime = 'node'
-            target_image = RUNTIME_IMAGES['node']
-        else:
-            req_runtime = 'python'
-            target_image = RUNTIME_IMAGES['python']
-
-        print(f"🔹 Job Received! [ID: {exec_id}] Runtime: {req_runtime}")
-
-        # ---------------------------------------------------------
-        # [2단계 & 3단계] Warm Start vs Cold Start
-        # ---------------------------------------------------------
-        container = None
-        
-        # A. Warm Pool 확인
-        if req_runtime in WARM_CACHE:
-            cached_container = WARM_CACHE[req_runtime]
-            try:
-                cached_container.reload()
-                if cached_container.status == 'running':
-                    container = cached_container
-                    print(f"   ⚡ Warm Start! (Using Pre-warmed container)")
-                else:
-                    del WARM_CACHE[req_runtime] # 죽었으면 제거
-            except:
-                del WARM_CACHE[req_runtime]
-
-        # B. Cold Start (Warm Pool에 없거나 죽었을 때)
-        if not container:
-            print(f"   ❄️ Cold Start... (Fallback creation)")
-            try:
-                container = docker_client.containers.run(
-                    target_image,
-                    detach=True,
-                    ports={'8080/tcp': None}
-                )
+            while not self.stop_event.is_set():
+                try:
+                    stats = self.container.stats(stream=False)
+                    mem_usage = stats.get('memory_stats', {}).get('usage', 0)
+                    mem_mb = mem_usage / (1024 * 1024)
+                    if mem_mb > self.max_memory_mb: self.max_memory_mb = mem_mb
+                    
+                    cpu_stats = stats['cpu_stats']
+                    precpu_stats = stats['precpu_stats']
+                    cpu_delta = cpu_stats['cpu_usage']['total_usage'] - precpu_stats['cpu_usage']['total_usage']
+                    system_delta = cpu_stats['system_cpu_usage'] - precpu_stats['system_cpu_usage']
+                    
+                    if system_delta > 0 and cpu_delta > 0:
+                        num_cpus = cpu_stats.get('online_cpus', 1)
+                        cpu_percent = (cpu_delta / system_delta) * num_cpus * 100.0
+                        if cpu_percent > self.max_cpu: self.max_cpu = cpu_percent
+                except:
+                    pass
                 time.sleep(0.5)
-                WARM_CACHE[req_runtime] = container # 다음을 위해 저장
-            except Exception as e:
-                print(f"   🔥 Creation Failed: {e}")
-                # 컨테이너 생성 실패는 재시도(DLQ)를 위해 continue
-                continue
+        except Exception:
+            pass
 
-        # ---------------------------------------------------------
-        # [Active Worker] 실행
-        # ---------------------------------------------------------
-        processing_success = False
+    def stop(self):
+        self.stop_event.set()
+
+# ==============================================================================
+# 💾 [함수] DB 로직 (여기가 수정되었습니다!)
+# ==============================================================================
+def get_db_connection():
+    return pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, db=DB_NAME, charset='utf8mb4')
+
+def fetch_function_details(func_id_str):
+    conn = get_db_connection()
+    try:
+        binary_id = uuid.UUID(func_id_str).bytes
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            sql = "SELECT code, runtime FROM functions WHERE id=%s"
+            cursor.execute(sql, (binary_id,))
+            return cursor.fetchone()
+    except Exception as e:
+        print(f"   🔥 DB Fetch Error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def save_result_to_db(execution_id_str, logs, result_val, error_msg, duration_ms, cpu_usage, memory_mb):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            r_id_bin = uuid.uuid4().bytes
+            e_id_bin = uuid.UUID(execution_id_str).bytes
+            
+            # 🚨 [수정 1] JSON 변환 제거 및 순수 출력값 추출
+            # 로그가 있으면 로그를, 없으면 결과값을, 둘 다 없으면 빈 문자열 저장
+            clean_output = logs if logs else str(result_val) if result_val is not None else ""
+
+            # 🚨 [수정 2] error_message 컬럼 활용
+            # 에러가 있으면 DB의 error_message 컬럼에 저장
+            final_error_msg = error_msg if error_msg else None
+
+            sql_insert = """
+                INSERT INTO execution_results 
+                (result_id, execution_id, output, error_message, cpu_usage, memory_usage_mb, duration_ms, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            """
+            cursor.execute(sql_insert, (
+                r_id_bin, e_id_bin, 
+                clean_output,       # 순수 텍스트 결과 (output 컬럼)
+                final_error_msg,    # 에러 메시지 (error_message 컬럼)
+                cpu_usage, memory_mb, duration_ms
+            ))
+
+            status = "FAILURE" if error_msg else "SUCCESS"
+            sql_update = "UPDATE executions SET status = %s, updated_at = NOW() WHERE execution_id = %s"
+            cursor.execute(sql_update, (status, e_id_bin))
+            
+        conn.commit()
+        print(f"   ✅ [DB Saved] {execution_id_str} -> {status}")
+        
+    except Exception as e:
+        print(f"   🔥 DB Save Error: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+# ==============================================================================
+# 🐳 [함수] 컨테이너 관리
+# ==============================================================================
+def get_container(runtime):
+    with pool_lock:
+        if runtime not in WARM_CACHE:
+             raise Exception(f"Unsupported runtime key: {runtime}")
+
+        if WARM_CACHE[runtime]:
+            container = WARM_CACHE[runtime].pop(0)
+            try:
+                container.reload()
+                if container.status == 'running':
+                    print(f"   ⚡ Warm Start!")
+                    return container
+            except:
+                pass
+    
+    print(f"   ❄️ Cold Start...")
+    image = RUNTIME_IMAGES.get(runtime)
+    return docker_client.containers.run(image, detach=True, ports={'8080/tcp': None})
+
+def return_container(runtime, container):
+    with pool_lock:
+        if runtime in WARM_CACHE:
+            WARM_CACHE[runtime].append(container)
+
+def warm_up_initial():
+    print(f"🔥 [Warm Pool] Initializing {NUM_WORKERS} containers...")
+    targets = ['python'] * 5 + ['node'] * 5
+    for rt in targets:
+        try:
+            c = docker_client.containers.run(RUNTIME_IMAGES[rt], detach=True, ports={'8080/tcp': None})
+            with pool_lock:
+                WARM_CACHE[rt].append(c)
+        except Exception as e:
+            print(f"Warning: Warmup failed: {e}")
+
+# ==============================================================================
+# 🚀 [함수] Worker Logic
+# ==============================================================================
+def process_job(sqs, msg):
+    container = None
+    monitor_thread = None
+    
+    try:
+        body = json.loads(msg['Body'])
+        receipt_handle = msg['ReceiptHandle']
+        exec_id = body.get('executionId')
+        func_id = body.get('functionId')
+
+        if not exec_id or not func_id:
+            sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
+            return
+
+        print(f"🔹 Job Received! [E_ID: {exec_id}]")
+
+        func_details = fetch_function_details(func_id)
+        if not func_details:
+            save_result_to_db(exec_id, "", None, "Function Not Found", 0, 0, 0)
+            sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
+            return
+
+        code = func_details['code']
+        raw_runtime = func_details['runtime'].lower()
+
+        if 'python' in raw_runtime:
+            runtime = 'python'
+        elif 'node' in raw_runtime:
+            runtime = 'node'
+        else:
+            runtime = raw_runtime
+
+        try:
+            container = get_container(runtime)
+        except Exception as e:
+            save_result_to_db(exec_id, "", None, f"Container Error: {e}", 0, 0, 0)
+            sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
+            return
+
+        start_time = time.time()
+        max_cpu = 0.0
+        max_mem = 0.0
+        response_data = {}
+        error_msg = None
+
         try:
             container.reload()
             host_port = container.attrs['NetworkSettings']['Ports']['8080/tcp'][0]['HostPort']
-            
             agent_url = f"http://localhost:{host_port}/execute"
-            code_payload = {"code": body.get("code", "")}
-            
-            # 실행!
-            res = requests.post(agent_url, json=code_payload, timeout=5)
-            
-            result_data = res.json()
-            # 결과 출력
-            output_msg = result_data.get('output', '').strip()
-            print(f"   ✅ Output: {output_msg}")
-            
-            processing_success = True
 
+            monitor_thread = ResourceMonitor(container)
+            monitor_thread.start()
+
+            res = requests.post(agent_url, json={"code": code}, timeout=30)
+            response_data = res.json()
+            
         except Exception as e:
-            print(f"   🔥 Exec Error: {e}")
-            # 에러난 컨테이너는 폐기처분 (Warm Pool에서도 삭제)
-            try:
-                container.stop(timeout=1)
-                container.remove()
-            except:
-                pass
-            if req_runtime in WARM_CACHE:
-                del WARM_CACHE[req_runtime]
+            error_msg = str(e)
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+            if monitor_thread:
+                monitor_thread.stop()
+                monitor_thread.join()
+                max_cpu = monitor_thread.max_cpu
+                max_mem = monitor_thread.max_memory_mb
 
-        # ---------------------------------------------------------
-        # [결과 처리] 성공 시 삭제, 실패 시 보존 (DLQ)
-        # ---------------------------------------------------------
-        if processing_success:
-            sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
-            print("   🗑️ Job Done. Container kept alive for Warm Pool.\n")
+        logs = response_data.get('output', '')
+        result_val = response_data.get('result', '')
+        
+        save_result_to_db(exec_id, logs, result_val, error_msg, duration_ms, max_cpu, max_mem)
+
+        sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
+        
+        if not error_msg:
+            return_container(runtime, container)
         else:
-            print("   ⚠️ Job Failed. Message NOT Deleted (Will retry).\n")
+            try: container.remove(force=True)
+            except: pass
 
-    except KeyboardInterrupt:
-        print("\n🛑 Stopping... Cleaning up containers...")
-        for rt, c in WARM_CACHE.items():
-            try:
-                c.stop()
-                c.remove()
-            except:
-                pass
-        break
     except Exception as e:
-        print(f"System Error: {e}")
-        time.sleep(1)
+        print(f"❌ Processing Error: {e}")
+
+def worker_thread_loop():
+    sqs = boto3.client('sqs', region_name=REGION)
+    while running:
+        try:
+            response = sqs.receive_message(
+                QueueUrl=SQS_QUEUE_URL,
+                MaxNumberOfMessages=1,
+                WaitTimeSeconds=20
+            )
+            if 'Messages' in response:
+                for msg in response['Messages']:
+                    process_job(sqs, msg)
+        except Exception as e:
+            time.sleep(2)
+
+def handle_signal(signum, frame):
+    global running
+    print("🛑 Shutting down worker...")
+    running = False
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
+    warm_up_initial()
+
+    print(f"🚀 [Worker Started] Spawning {NUM_WORKERS} threads...")
+    threads = []
+    for _ in range(NUM_WORKERS):
+        t = threading.Thread(target=worker_thread_loop)
+        t.daemon = True
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
