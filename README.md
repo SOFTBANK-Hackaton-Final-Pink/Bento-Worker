@@ -69,11 +69,11 @@
 
 ### 2. Auto-scaling インスタンス
 「中止」と表記されたインスタンスが、今後のオートスケーリング発生時に即座に使用される（Warm Pool待機状態の）インスタンスです。
-<img width="1074" height="651" alt="image (4)" src="https://github.com/user-attachments/assets/51d8affc-7f44-4822-a813-e712d84211ab" />
+<img width="1566" height="513" alt="image (2) (1)" src="https://github.com/user-attachments/assets/f9f3d162-e64d-476d-a66b-815b21d4afaf" />
 
 ### 3. SQS Message Queue
 SQSに蓄積（キューイング）されたメッセージ。
-<img width="1566" height="513" alt="image (2) (1)" src="https://github.com/user-attachments/assets/f9f3d162-e64d-476d-a66b-815b21d4afaf" />
+<img width="1074" height="651" alt="image (4)" src="https://github.com/user-attachments/assets/51d8affc-7f44-4822-a813-e712d84211ab" />
 
 ### 4. Container Warm-Pool 処理
 Container Warm-PoolがSQSから関数を受け取って実行する様子。
