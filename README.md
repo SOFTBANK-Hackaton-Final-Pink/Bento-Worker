@@ -3,6 +3,7 @@
 [![Github Link](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github)](https://github.com/SOFTBANK-Hackaton-Final-Pink/Bento-Worker)
 
 ## 📌 プロジェクト概要
+- **プロジェクト説明**: AWS Lambdaのサーバーレス環境をEC2インスタンス上で再現したプロジェクト
 - **大会名**: SoftBank Hackathon 2025（本選）
 - **開発期間**: 2025.11.29 ~ 2025.12.07（1週間）
 - **チーム構成**: フロントエンド 1名、バックエンド 3名、インフラ 2名
