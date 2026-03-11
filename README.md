@@ -1,6 +1,7 @@
-# Code Bento
+<img width="1876" height="917" alt="image (2)" src="https://github.com/user-attachments/assets/2a499667-e932-416a-a358-cad71df50691" /># Code Bento
 
-[여기에 Code Bento 로고/메인 이미지 드래그 앤 드롭]
+[<img width="1876" height="917" alt="image (2)" src="https://github.com/user-attachments/assets/30bb7e20-c6bf-4d9c-bc06-34d54a56490a" />
+]
 
 [Github Link →](https://github.com/SOFTBANK-Hackaton-Final-Pink/Bento-Worker)
 
