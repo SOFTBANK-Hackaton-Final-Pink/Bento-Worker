@@ -1,13 +1,12 @@
-<img width="1876" height="917" alt="image (2)" src="https://github.com/user-attachments/assets/2a499667-e932-416a-a358-cad71df50691" /># Code Bento
-
-[<img width="1876" height="917" alt="image (2)" src="https://github.com/user-attachments/assets/30bb7e20-c6bf-4d9c-bc06-34d54a56490a" />
-]
-
-[Github Link →](https://github.com/SOFTBANK-Hackaton-Final-Pink/Bento-Worker)
+## 부하테스트 실행 및 SQS Autoscaling 확인 노션 링크
+https://www.notion.so/Code-Bento-Lambda-on-VM-1-97c0368c16f782ae99a801726ced78fd?source=copy_link
 
 ## Architecture
+<img width="5664" height="3908" alt="image (1) (1)" src="https://github.com/user-attachments/assets/d7013f35-ead3-4eaa-9a56-b1464906216e" />
 
-[여기에 아키텍처 이미지 드래그 앤 드롭]
+
+## 사이트 이미지
+<img width="1876" height="917" alt="image (2)" src="https://github.com/user-attachments/assets/978e2baa-51b8-4bf1-8ec2-9dc047476055" />
 
 ---
 
@@ -45,16 +44,21 @@
 **1000人のユーザーが段階的に計15000個の関数を送った時を想定して負荷テストを実施**
 
 ### 1. Locustで1000人負荷
-[여기에 Locust 부하 테스트 이미지 드래그 앤 드롭]
+<img width="2252" height="1347" alt="image (3)" src="https://github.com/user-attachments/assets/4b005d80-317c-4f34-bc6c-fbee786c1d05" />
+
 
 ### 2. Auto-scaling 인스턴스
 中止と表記されたインスタンスが今後のautoscalingにすぐに使用されるインスタンスです。
-[여기에 인스턴스 중지/대기 이미지 드래그 앤 드롭]
+<img width="1074" height="651" alt="image (4)" src="https://github.com/user-attachments/assets/51d8affc-7f44-4822-a813-e712d84211ab" />
+
 
 ### 3. SQS Message Queue
 SQSにたまったメッセージ
-[여기에 SQS 메시지 축적 이미지 드래그 앤 드롭]
+<img width="1566" height="513" alt="image (2) (1)" src="https://github.com/user-attachments/assets/f9f3d162-e64d-476d-a66b-815b21d4afaf" />
+
 
 ### 4. Container Warm-Pool 처리
 Container Warm-PoolがSQSで関数を受け取って実行する様子
-[여기에 컨테이너 실행 로그 이미지 드래그 앤 드롭]
+<img width="951" height="505" alt="image (5)" src="https://github.com/user-attachments/assets/2730926a-9188-4a09-b5a5-d64cd6ec4ec4" />
+
+
