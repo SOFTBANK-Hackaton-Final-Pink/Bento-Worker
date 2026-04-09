@@ -6,9 +6,9 @@
 - **プロジェクト説明**: サーバーレスアーキテクチャを活用したインフラ自動デプロイ支援サービス
 - **大会名**: SoftBank Hackathon 2025（予選）
 - **開発期間**: 2025.11.02 ~ 2025.11.09（1週間）
-- **チーム構成**: フロントエンド 1名、バックエンド 2名、PM 1名、インフラ（メンバー全員で担当）
+- **参加人数**：6名
 - **技術スタック**: AWS Amplify, Amazon API Gateway, Amazon CloudFront, AWS WAF, Amazon S3, AWS Lambda, Amazon SQS, AWS Step Functions, Amazon CloudWatch, AWS Budgets, TypeScript
-- **担当役割**: バックエンド
+- **担当役割**: PM
 
 ### 💡 主な担当業務と成果
 * **サーバーレスバックエンドおよびRESTful APIエンドポイントの構築**
