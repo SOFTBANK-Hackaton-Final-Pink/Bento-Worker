@@ -3,18 +3,21 @@
 [![Github Link](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github)](https://github.com/SOFTBANK-Hackaton-Final-Pink/Bento-Worker)
 
 ## 📌 プロジェクト概要
-- **プロジェクト説明**: AWS Lambdaのサーバーレス環境をEC2インスタンス上で再現したプロジェクト
-- **大会名**: SoftBank Hackathon 2025（本選）
-- **開発期間**: 2025.11.29 ~ 2025.12.07（1週間）
-- **チーム構成**: フロントエンド 1名、バックエンド 3名、インフラ 2名
-- **技術スタック**: AWS EC2, Auto Scaling Group, SQS, Docker, Python, Linux Shell Script (User Data), AWS Lambda
-- **担当役割**: PM
+- **プロジェクト説明**: サーバーレスアーキテクチャを活用したインフラ自動デプロイ支援サービス
+- **大会名**: SoftBank Hackathon 2025（予選）
+- **開発期間**: 2025.11.02 ~ 2025.11.09（1週間）
+- **チーム構成**: フロントエンド 1名、バックエンド 2名、PM 1名、インフラ（メンバー全員で担当）
+- **技術スタック**: AWS Amplify, Amazon API Gateway, Amazon CloudFront, AWS WAF, Amazon S3, AWS Lambda, Amazon SQS, AWS Step Functions, Amazon CloudWatch, AWS Budgets, TypeScript
+- **担当役割**: バックエンド
 
 ### 💡 主な担当業務と成果
-* **コールドスタートのバイパスおよびコンテナ再利用アーキテクチャの実装**
-* **SQSメトリクスに基づく柔軟なオートスケーリングの実装**
-* **Warm Poolを活用したインスタンスの即時投入システムの構築**
-  * ASG (Auto Scaling Group) のWarm Pool機能を活用し、ワーカーインスタンスのサービス投入時間を**3分から30秒へと大幅に短縮**しました。
+* **サーバーレスバックエンドおよびRESTful APIエンドポイントの構築**
+  * AWS Lambdaを用いてサーバーレスバックエンドロジックを開発し、Amazon API Gatewayと統合しました。
+* **S3署名付きURL（Pre-signed URL）を活用したセキュアなファイルアップロード機能の実装**
+  * S3の事前署名URLを動的に生成してクライアントに配信するロジックを実装し、安全かつ効率的なファイルアップロード環境を保証しました。
+* **非同期処理を用いたイベント駆動型（Event-Driven）アーキテクチャの設計**
+  * Amazon API GatewayとLambdaの間にAmazon SQSを結合し、トラフィックを安全にキューイングする非同期処理パイプラインを構築しました。
+
 
 ---
 
