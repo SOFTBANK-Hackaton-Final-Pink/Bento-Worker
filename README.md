@@ -2,21 +2,22 @@
 
 [![Github Link](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github)](https://github.com/SOFTBANK-Hackaton-Final-Pink/Bento-Worker)
 
-## 📌 プロジェクト概要
-- **プロジェクト説明**: サーバーレスアーキテクチャを活用したインフラ自動デプロイ支援サービス
-- **大会名**: SoftBank Hackathon 2025（予選）
-- **開発期間**: 2025.11.02 ~ 2025.11.09（1週間）
-- **参加人数**：6名
-- **技術スタック**: AWS Amplify, Amazon API Gateway, Amazon CloudFront, AWS WAF, Amazon S3, AWS Lambda, Amazon SQS, AWS Step Functions, Amazon CloudWatch, AWS Budgets, TypeScript
+## SoftBank Hackathon 2025（本選） - CodeBento Worker
+
+### プロジェクト概要
+- **大会名**: SoftBank Hackathon 2025（本選）
+- **開発期間**: 2025.11.22 ~ 2025.12.07（約2週間）
+- **参加人数**: 6名
+- **プロジェクト説明**: ユーザーが提出したコードをクラウド上で安全に実行するPaaS型コード実行サービス
+- **技術スタック**: Python, Linux Shell Script（User Data）, AWS Lambda, Amazon EC2, Auto Scaling Group, Amazon SQS, Docker
 - **担当役割**: PM
 
-### 💡 主な担当業務と成果
-* **サーバーレスバックエンドおよびRESTful APIエンドポイントの構築**
-  * AWS Lambdaを用いてサーバーレスバックエンドロジックを開発し、Amazon API Gatewayと統合しました。
-* **S3署名付きURL（Pre-signed URL）を活用したセキュアなファイルアップロード機能の実装**
-  * S3の事前署名URLを動的に生成してクライアントに配信するロジックを実装し、安全かつ効率的なファイルアップロード環境を保証しました。
-* **非同期処理を用いたイベント駆動型（Event-Driven）アーキテクチャの設計**
-  * Amazon API GatewayとLambdaの間にAmazon SQSを結合し、トラフィックを安全にキューイングする非同期処理パイプラインを構築しました。
+### 主な担当業務と成果
+- ユーザーコードを実行するPaaSサービスのPMとして、要件整理、役割分担、進行管理を担当しました。
+- SQSのキュー長や処理遅延などのメトリクスを基に、ワーカーインスタンスを自動的にスケールアウトする構成を設計しました。
+- ASG Warm Poolを活用し、事前に起動済みのワーカーインスタンスを待機させることで、急なリクエスト増加にも素早く対応できる構成を導入しました。
+- Dockerコンテナの再利用を前提としたワーカー実行アーキテクチャを設計し、コード実行環境の起動コスト削減を図りました。
+- その結果、ワーカーインスタンスの準備時間を約3分から約30秒まで短縮し、サービスの応答性向上に貢献しました。
 
 
 ---
